@@ -1,0 +1,156 @@
+
+```{r}
+library(tidyverse)
+library(fixest)
+library("ggpubr")
+# library(modelsummary)
+
+
+df_wall_deaths =   read.csv('../migrant_deaths_analysis/mean_death_datapoints.csv')
+
+df_wall_deaths <-df_wall_deaths %>%
+  filter(Reporting_year<2021,Reporting_year>=2015) 
+
+
+df_wall_deaths_sum_year <- df_wall_deaths %>%  group_by(Reporting_year) %>% 
+  summarise(sum_deaths = sum(death_counts))
+
+deaths_year_percent <- merge(x = df_wall_deaths, y = df_wall_deaths_sum_year, by = "Reporting_year", all.x = TRUE)
+
+deaths_year_percent <- deaths_year_percent %>%
+  mutate(cor_percent =  death_counts / sum_deaths)
+
+
+cor.test(deaths_year_percent$cor_percent, deaths_year_percent$percent_unwalled_border, method=c("kendall"))
+deaths_year_percent
+
+deaths_year_percent <-deaths_year_percent %>% dplyr::select(death_counts,percent_unwalled_border,CORNO,Reporting_year,cor_percent,town_distance_miles,road_distance_miles)
+```
+
+
+```{r}
+
+ggdensity(deaths_year_percent$death_counts, 
+          main = "Density plot of deaths",
+          xlab = "death count")
+```
+
+
+```{r}
+
+cor.test(df_wall_deaths$death_counts, df_wall_deaths$percent_unwalled_border, method=c("kendall"))
+
+p <- ggplot(data = deaths_year_percent, aes(x = percent_unwalled_border, y = cor_percent)) + geom_point()
+
+p + facet_wrap(~Reporting_year)
+
+```
+
+
+
+
+
+```{r}
+
+p <- ggplot(data = deaths_year_percent, aes(x = town_distance_miles, y = cor_percent)) + geom_point()
+
+p + facet_wrap(~Reporting_year)
+
+```
+
+
+```{r}
+# poisson
+
+
+# Using fixed effects, clustering years.
+res_poisson = feglm(cor_percent ~ percent_unwalled_border | Reporting_year, data =deaths_year_percent,  family = "poisson")
+res_poisson
+
+
+esttable(res_poisson)
+
+  
+# Character scalar. Which kind of standard error should be computed:“cluster”
+res_poisson_clustered = summary(res_poisson, se = "clu")
+#Dispersion parameter: Sum of squared pearsons residuals/degrees of freedom
+# https://rdrr.io/cran/fixest/man/degrees_freedom.html
+DISP <- (sum(residuals(res_poisson, type='pearson')^2)/degrees_freedom(res_poisson_clustered, type = "resid"))
+
+print('DISP')
+print(DISP)
+#0.1042841 is slightly greater than one, so this dataset may be overdispersed. We want to account for this because while overdispersion won't change out estimate is, our standard error will be underestimated. If our standard error is underestimated that means our p-value will be too small, which can give us a false positive, or retun a statistically significant result that's not really statistically significant. A quasipoisson model can help us account for overdispersion. 
+
+```
+
+
+```{r}
+# A quasipoisson model 
+res_quasipoisson = feglm(death_counts ~ percent_unwalled_border | Reporting_year, data =deaths_year_percent,  family = "quasipoisson")
+res_quasipoisson
+
+
+res_quasipoisson_clustered = summary(res_quasipoisson, se = "clu")
+
+DISP <- (sum(residuals(res_quasipoisson,type='pearson')^2)/degrees_freedom(res_quasipoisson_clustered, type = "resid"))
+
+esttable(res_quasipoisson,order = "Dist")
+
+y_fitted_res_quasipoisson = fitted(res_quasipoisson)
+
+
+exp(.04751) - 1
+summary(res_quasipoisson)
+df_wall_deaths
+```
+
+
+```{r}
+res_quasipoisson = feglm(death_counts ~  percent_unwalled_border | Reporting_year, data =deaths_year_percent,  family = "quasipoisson")
+
+res_quasipoisson
+summary(res_quasipoisson)
+
+print(exp(.04370)-1)
+print(exp((.04370)*3) - 1)
+
+esttable(res_quasipoisson,order = "Dist")
+```
+
+
+```{r}
+
+res_quasipoisson = feglm(death_counts ~ town_distance_miles| Reporting_year, data =deaths_year_percent,  family = "quasipoisson")
+
+res_quasipoisson
+summary(res_quasipoisson)
+
+
+
+print(exp(0.0156) - 1)
+print('ex 3:')
+print(exp((0.015*9)) - 1)
+
+esttable(res_quasipoisson,order = "Dist")
+
+```
+
+```{r}
+
+
+
+res_negbin = fenegbin(death_counts ~ percent_unwalled_border+town_distance_miles | Reporting_year,data =deaths_year_percent)
+
+res_negbin
+
+
+```
+
+```{r}
+
+res_negbin = fenegbin(death_counts ~ percent_unwalled_border+town_distance_miles | Reporting_year,data =deaths_year_percent)
+
+res_negbin
+```
+
+
